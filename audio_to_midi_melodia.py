@@ -35,172 +35,173 @@ python audio_to_midi_melodia.py --smooth 0.25 --minduration 0.1 --jams
                                 ~/song.wav ~/song.mid 60
 '''
 
+class Audio_to_MIDI():
 
-def save_jams(jamsfile, notes, track_duration, orig_filename):
+    def save_jams(self, jamsfile, notes, track_duration, orig_filename):
 
-    # Construct a new JAMS object and annotation records
-    jam = jams.JAMS()
+        # Construct a new JAMS object and annotation records
+        jam = jams.JAMS()
 
-    # Store the track duration
-    jam.file_metadata.duration = track_duration
-    jam.file_metadata.title = orig_filename
+        # Store the track duration
+        jam.file_metadata.duration = track_duration
+        jam.file_metadata.title = orig_filename
 
-    midi_an = jams.Annotation(namespace='pitch_midi',
-                              duration=track_duration)
-    midi_an.annotation_metadata = \
-        jams.AnnotationMetadata(
-            data_source='audio_to_midi_melodia.py v%s' % __init__.__version__,
-            annotation_tools='audio_to_midi_melodia.py (https://github.com/'
-                             'justinsalamon/audio_to_midi_melodia)')
+        midi_an = jams.Annotation(namespace='pitch_midi',
+                                  duration=track_duration)
+        midi_an.annotation_metadata = \
+            jams.AnnotationMetadata(
+                data_source='audio_to_midi_melodia.py v%s' % __init__.__version__,
+                annotation_tools='audio_to_midi_melodia.py (https://github.com/'
+                                 'justinsalamon/audio_to_midi_melodia)')
 
-    # Add midi notes to the annotation record.
-    for n in notes:
-        midi_an.append(time=n[0], duration=n[1], value=n[2], confidence=0)
+        # Add midi notes to the annotation record.
+        for n in notes:
+            midi_an.append(time=n[0], duration=n[1], value=n[2], confidence=0)
 
-    # Store the new annotation in the jam
-    jam.annotations.append(midi_an)
+        # Store the new annotation in the jam
+        jam.annotations.append(midi_an)
 
-    # Save to disk
-    jam.save(jamsfile)
-
-
-def save_midi(outfile, notes, tempo):
-
-    track = 0
-    time = 0
-    midifile = MIDIFile(1)
-
-    # Add track name and tempo.
-    midifile.addTrackName(track, time, "MIDI TRACK")
-    midifile.addTempo(track, time, tempo)
-
-    channel = 0
-    volume = 100
-
-    for note in notes:
-        onset = note[0] * (tempo/60.)
-        duration = note[1] * (tempo/60.)
-        # duration = 1
-        pitch = note[2]
-        midifile.addNote(track, channel, pitch, onset, duration, volume)
-
-    # And write it to disk.
-    binfile = open(outfile, 'wb')
-    midifile.writeFile(binfile)
-    binfile.close()
+        # Save to disk
+        jam.save(jamsfile)
 
 
-def midi_to_notes(midi, fs, hop, smooth, minduration):
+    def save_midi(self, outfile, notes, tempo):
 
-    # smooth midi pitch sequence first
-    if (smooth > 0):
-        filter_duration = smooth  # in seconds
-        filter_size = int(filter_duration * fs / float(hop))
-        if filter_size % 2 == 0:
-            filter_size += 1
-        midi_filt = medfilt(midi, filter_size)
-    else:
-        midi_filt = midi
-    # print(len(midi),len(midi_filt))
+        track = 0
+        time = 0
+        midifile = MIDIFile(1)
 
-    notes = []
-    p_prev = None
-    duration = 0
-    onset = 0
-    for n, p in enumerate(midi_filt):
-        if p == p_prev:
-            duration += 1
+        # Add track name and tempo.
+        midifile.addTrackName(track, time, "MIDI TRACK")
+        midifile.addTempo(track, time, tempo)
+
+        channel = 0
+        volume = 100
+
+        for note in notes:
+            onset = note[0] * (tempo/60.)
+            duration = note[1] * (tempo/60.)
+            # duration = 1
+            pitch = note[2]
+            midifile.addNote(track, channel, pitch, onset, duration, volume)
+
+        # And write it to disk.
+        binfile = open(outfile, 'wb')
+        midifile.writeFile(binfile)
+        binfile.close()
+
+
+    def midi_to_notes(self, midi, fs, hop, smooth, minduration):
+
+        # smooth midi pitch sequence first
+        if (smooth > 0):
+            filter_duration = smooth  # in seconds
+            filter_size = int(filter_duration * fs / float(hop))
+            if filter_size % 2 == 0:
+                filter_size += 1
+            midi_filt = medfilt(midi, filter_size)
         else:
-            # treat 0 as silence
-            if p_prev > 0:
-                # add note
-                duration_sec = duration * hop / float(fs)
-                # only add notes that are long enough
-                if duration_sec >= minduration:
-                    onset_sec = onset * hop / float(fs)
-                    notes.append((onset_sec, duration_sec, p_prev))
+            midi_filt = midi
+        # print(len(midi),len(midi_filt))
 
-            # start new note
-            onset = n
-            duration = 1
-            p_prev = p
+        notes = []
+        p_prev = None
+        duration = 0
+        onset = 0
+        for n, p in enumerate(midi_filt):
+            if p == p_prev:
+                duration += 1
+            else:
+                # treat 0 as silence
+                if p_prev > 0:
+                    # add note
+                    duration_sec = duration * hop / float(fs)
+                    # only add notes that are long enough
+                    if duration_sec >= minduration:
+                        onset_sec = onset * hop / float(fs)
+                        notes.append((onset_sec, duration_sec, p_prev))
 
-    # add last note
-    if p_prev > 0:
-        # add note
-        duration_sec = duration * hop / float(fs)
-        onset_sec = onset * hop / float(fs)
-        notes.append((onset_sec, duration_sec, p_prev))
+                # start new note
+                onset = n
+                duration = 1
+                p_prev = p
 
-    return notes
+        # add last note
+        if p_prev > 0:
+            # add note
+            duration_sec = duration * hop / float(fs)
+            onset_sec = onset * hop / float(fs)
+            notes.append((onset_sec, duration_sec, p_prev))
 
-
-def hz2midi(hz):
-
-    # convert from Hz to midi note
-    hz_nonneg = hz.copy()
-    idx = hz_nonneg <= 0
-    hz_nonneg[idx] = 1
-    midi = 69 + 12*np.log2(hz_nonneg/440.)
-    midi[idx] = 0
-
-    # round
-    midi = np.round(midi)
-
-    return midi
+        return notes
 
 
-def audio_to_midi_melodia(infile, outfile, bpm, smooth=0.25, minduration=0.1,
-                          savejams=False):
+    def hz2midi(self, hz):
 
-    # define analysis parameters
-    fs = 44100
-    hop = 128
+        # convert from Hz to midi note
+        hz_nonneg = hz.copy()
+        idx = hz_nonneg <= 0
+        hz_nonneg[idx] = 1
+        midi = 69 + 12*np.log2(hz_nonneg/440.)
+        midi[idx] = 0
 
-    # load audio using librosa
-    print("Loading audio...")
-    data, sr = soundfile.read(infile)
-    # mixdown to mono if needed
-    if len(data.shape) > 1 and data.shape[1] > 1:
-        data = data.mean(axis=1)
-    # resample to 44100 if needed
-    if sr != fs:
-        data = resampy.resample(data, sr, fs)
-        sr = fs
+        # round
+        midi = np.round(midi)
 
-    # extract melody using melodia vamp plugin
-    print("Extracting melody f0 with MELODIA...")
-    melody = vamp.collect(data, sr, "mtg-melodia:melodia",
-                          parameters={"voicing": 0.2})
+        return midi
 
-    # hop = melody['vector'][0]
-    pitch = melody['vector'][1]
 
-    # impute missing 0's to compensate for starting timestamp
-    pitch = np.insert(pitch, 0, [0]*8)
+    def audio_to_midi_melodia(self, infile, outfile, bpm, smooth=0.25,
+                              minduration=0.1, savejams=False):
 
-    # debug
-    # np.asarray(pitch).dump('f0.npy')
-    # print(len(pitch))
+        # define analysis parameters
+        fs = 44100
+        hop = 128
 
-    # convert f0 to midi notes
-    print("Converting Hz to MIDI notes...")
-    midi_pitch = hz2midi(pitch)
+        # load audio using librosa
+        print("Loading audio...")
+        data, sr = soundfile.read(infile)
+        # mixdown to mono if needed
+        if len(data.shape) > 1 and data.shape[1] > 1:
+            data = data.mean(axis=1)
+        # resample to 44100 if needed
+        if sr != fs:
+            data = resampy.resample(data, sr, fs)
+            sr = fs
 
-    # segment sequence into individual midi notes
-    notes = midi_to_notes(midi_pitch, fs, hop, smooth, minduration)
+        # extract melody using melodia vamp plugin
+        print("Extracting melody f0 with MELODIA...")
+        melody = vamp.collect(data, sr, "mtg-melodia:melodia",
+                              parameters={"voicing": 0.2})
 
-    # save note sequence to a midi file
-    print("Saving MIDI to disk...")
-    save_midi(outfile, notes, bpm)
+        # hop = melody['vector'][0]
+        pitch = melody['vector'][1]
 
-    if savejams:
-        print("Saving JAMS to disk...")
-        jamsfile = os.path.splitext(outfile)[0] + ".jams"
-        track_duration = len(data) / float(fs)
-        save_jams(jamsfile, notes, track_duration, os.path.basename(infile))
+        # impute missing 0's to compensate for starting timestamp
+        pitch = np.insert(pitch, 0, [0]*8)
 
-    print("Conversion complete.")
+        # debug
+        # np.asarray(pitch).dump('f0.npy')
+        # print(len(pitch))
+
+        # convert f0 to midi notes
+        print("Converting Hz to MIDI notes...")
+        midi_pitch = self.hz2midi(pitch)
+
+        # segment sequence into individual midi notes
+        notes = self.midi_to_notes(midi_pitch, fs, hop, smooth, minduration)
+
+        # save note sequence to a midi file
+        print("Saving MIDI to disk...")
+        self.save_midi(outfile, notes, bpm)
+
+        if savejams:
+            print("Saving JAMS to disk...")
+            jamsfile = os.path.splitext(outfile)[0] + ".jams"
+            track_duration = len(data) / float(fs)
+            self.save_jams(jamsfile, notes, track_duration, os.path.basename(infile))
+
+        print("Conversion complete.")
 
 
 if __name__ == "__main__":
@@ -220,6 +221,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    audio_to_midi_melodia(args.infile, args.outfile, args.bpm,
+    A2M = Audio_to_MIDI()
+
+    A2M.audio_to_midi_melodia(args.infile, args.outfile, args.bpm,
                           smooth=args.smooth, minduration=args.minduration,
                           savejams=args.jams)
